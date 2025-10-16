@@ -80,6 +80,22 @@ interface CheckoutSessionManagementInterface
     );
 
     /**
+     * Revert the order (cancel or close) and revert the payment (cancel charge or close permissions) on Amazon side
+     *
+     * @param string $amazonSessionId
+     * @param \Magento\Sales\Api\Data\OrderInterface $order
+     * @param \Magento\Quote\Api\Data\CartInterface $quote
+     * @param \Exception $exception
+     * @return void
+     */
+    public function revertOrder(
+        string $amazonSessionId, 
+        OrderInterface $order, 
+        CartInterface $quote, 
+        \Exception $exception
+    ): void;
+
+    /**
      * Login to the Magento store using Amazon account information
      *
      * Creates a Magento store account if one does not exist.
@@ -97,4 +113,23 @@ interface CheckoutSessionManagementInterface
      * @return mixed
      */
     public function setCustomerLink($buyerToken, $password);
+
+    /**
+     * Close charge permission when was opened
+     *
+     * @param string $amazonSessionId
+     * @param OrderInterface $order
+     * @param \Exception $e
+     * @return void
+     */
+    public function closeChargePermission($amazonSessionId, OrderInterface $order, \Exception $e): void;
+
+    /**
+     * Refund charge when was paid
+     *
+     * @param string $amazonSessionId
+     * @param OrderInterface $order
+     * @return void
+     */
+    public function refundCharge(string $amazonSessionId, OrderInterface $order): void;
 }

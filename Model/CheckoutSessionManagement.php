@@ -16,7 +16,6 @@
 
 namespace Amazon\Pay\Model;
 
-use Amazon\Pay\Api\Data\CheckoutSessionInterface;
 use Amazon\Pay\Gateway\Config\Config;
 use Amazon\Pay\Helper\Session;
 use Amazon\Pay\Model\Config\Source\AuthorizationMode;
@@ -27,9 +26,11 @@ use Amazon\Pay\Api\Data\AmazonCustomerInterface;
 use Amazon\Pay\Model\Exception\OrderFailureException;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Framework\Webapi\Exception as WebapiException;
+use Magento\Sales\Api\CreditmemoRepositoryInterface;
 use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Customer\Model\CustomerRegistry;
 use Magento\Framework\Encryption\Encryptor;
+use Magento\Sales\Model\Order\Creditmemo;
 use Magento\Sales\Model\Order\Invoice;
 use Magento\Sales\Model\Order\Payment;
 use Magento\Quote\Model\MaskedQuoteIdToQuoteIdInterface;
@@ -46,6 +47,21 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
 {
     protected const GENERIC_COMPLETE_CHECKOUT_ERROR_MESSAGE = 'Unable to complete Amazon Pay checkout.';
     protected const ADDRESS_CHANGED_CHECKOUT_ERROR_MESSAGE = 'Shipping address mismatch.';
+
+    /**
+     * @var \Magento\Sales\Model\Order\CreditmemoFactory
+     */
+    private $creditmemoFactory;
+
+    /**
+     * @var \Magento\Sales\Api\CreditmemoRepositoryInterface
+     */
+    private $creditmemoRepository;
+
+    /**
+     * @var \Magento\Sales\Model\Order\RefundAdapterInterface
+     */
+    private $refundAdapter;
 
     /**
      * @var \Magento\Store\Model\StoreManagerInterface
@@ -238,6 +254,9 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
     /**
      * CheckoutSessionManagement constructor.
      *
+     * @param \Magento\Sales\Model\Order\CreditmemoFactory $creditmemoFactory
+     * @param \Magento\Sales\Api\CreditmemoRepositoryInterface $creditmemoRepository
+     * @param \Magento\Sales\Model\Order\RefundAdapterInterface $refundAdapter
      * @param \Magento\Store\Model\StoreManagerInterface $storeManager
      * @param \Magento\Quote\Model\QuoteIdMaskFactory $quoteIdMaskFactory
      * @param \Magento\Quote\Api\CartManagementInterface $cartManagement
@@ -275,6 +294,9 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
      * @param UpdateCouponUsages $updateCouponUsages
      */
     public function __construct(
+        \Magento\Sales\Model\Order\CreditmemoFactory $creditmemoFactory,
+        \Magento\Sales\Api\CreditmemoRepositoryInterface $creditmemoRepository,
+        \Magento\Sales\Model\Order\RefundAdapterInterface $refundAdapter,
         \Magento\Store\Model\StoreManagerInterface $storeManager,
         \Magento\Quote\Model\QuoteIdMaskFactory $quoteIdMaskFactory,
         \Magento\Quote\Api\CartManagementInterface $cartManagement,
@@ -311,6 +333,9 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
         Translate $translationRenderer,
         UpdateCouponUsages $updateCouponUsages
     ) {
+        $this->creditmemoFactory = $creditmemoFactory;
+        $this->creditmemoRepository = $creditmemoRepository;
+        $this->refundAdapter = $refundAdapter;
         $this->storeManager = $storeManager;
         $this->quoteIdMaskFactory = $quoteIdMaskFactory;
         $this->cartManagement = $cartManagement;
@@ -742,9 +767,6 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
         return $result;
     }
 
-    /**
-     * @inheritDoc
-     */
     public function completeCheckoutSession(
         $amazonSessionId, 
         $cartId = null, 
@@ -773,39 +795,69 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
             'success' => false
         ];
 
-        try {
-            $order = $this->orderRepository->get($orderId);
-            $quote = $this->getQuote($order);
+        $order = $this->orderRepository->get($orderId);
+        $quote = $this->getQuote($order);
 
-            // @TODO: associate token with payment?
-            $result['order_id'] = $orderId;
-            $result['increment_id'] = $order->getIncrementId();
-            // Order is canceled on failure
-            $amazonCheckoutResult = $this->completeAmazonCheckoutSession($amazonSessionId, $order, $quote, $isBuyNowFlow);
-            if (!$amazonCheckoutResult['success']) {
-                return $amazonCheckoutResult;
-            }
+        // @TODO: associate token with payment?
+        $result['order_id'] = $orderId;
+        $result['increment_id'] = $order->getIncrementId();
 
-            // Order is canceled on failure
-            $paymentResult = $this->handlePayment($amazonSessionId, $amazonCheckoutResult, $order, $quote);
-            if (!$paymentResult['success']) {
-                return $paymentResult;
-            }
-
-            $result['success'] = true;
-
-        } catch (\Exception $e) {
-            if (isset($order)) {
-                $this->closeChargePermission($amazonSessionId, $order, $e);
-                $session = $this->getAmazonSession($amazonSessionId);
-                $cancelledMessage = $this->getCanceledMessage($session);
-                $this->cancelOrder($order, $quote, $cancelledMessage);
-                $this->magentoCheckoutSession->restoreQuote();
-            }
-
-            throw $e;
+        $amazonCheckoutResult = $this->completeAmazonCheckoutSession($amazonSessionId, $order, $quote, $isBuyNowFlow);
+        if (!$amazonCheckoutResult['success']) {
+            return $amazonCheckoutResult;
         }
+
+        $paymentResult = $this->handlePayment($amazonSessionId, $amazonCheckoutResult, $order, $quote);
+        if (!$paymentResult['success']) {
+            return $paymentResult;
+        }
+
+        $result['success'] = true;
+
         return $result;
+    }
+
+    public function revertOrder(
+        string $amazonSessionId, 
+        OrderInterface $order, 
+        CartInterface $quote, 
+        \Exception $exception
+    ): void {
+        $session = $this->getAmazonSession($amazonSessionId);
+
+        $this->closeChargePermission($amazonSessionId, $order, $exception);
+
+        $orderPayment = $order->getPayment();
+        $transaction = $orderPayment?->getCreatedTransaction();
+
+        if (isset($session['chargeId']) && $transaction && $transaction->getTxnType() === Transaction::TYPE_CAPTURE) {
+            $creditmemo = $this->creditmemoFactory->createByOrder($order);
+            $invoice = $order->getInvoiceCollection()->getFirstItem();
+
+            $creditmemo->setInvoice($invoice);
+            $creditmemo->setState(Creditmemo::STATE_REFUNDED);
+
+            $orderPayment->setCreatedInvoice($invoice);
+            $orderPayment->setCreditmemo($creditmemo);
+            $orderPayment->setParentTransactionId($transaction->getTxnId());
+
+            $this->refundAdapter->refund($creditmemo, $order, true);
+
+            $this->creditmemoRepository->save($creditmemo);
+            $this->orderRepository->save($order);
+        } elseif (isset($session['chargeId']) && $transaction && $transaction->getTxnType() === Transaction::TYPE_AUTH) {
+            $cancelledMessage = $this->getCanceledMessage($session);
+
+            $this->refundCharge($amazonSessionId, $order);
+
+            $this->cancelOrder($order, $quote, $cancelledMessage);
+        } else {
+            $cancelledMessage = $this->getCanceledMessage($session);
+
+            $this->cancelOrder($order, $quote, $cancelledMessage);
+        }
+
+        $this->magentoCheckoutSession->restoreQuote();
     }
 
     /**
@@ -1266,26 +1318,9 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
         $completeCheckoutStatus = $amazonCompleteCheckoutResult['status'] ?? '404';
 
         if (!preg_match('/^2\d\d$/', $completeCheckoutStatus)) {
-
-            $session = $this->amazonAdapter->getCheckoutSession(
-                $order->getStoreId(),
-                $amazonSessionId
-            );
+            $session = $this->getAmazonSession($amazonSessionId);
 
             $cancelledMessage = $this->getCanceledMessage($session);
-
-            // Something went wrong, but the order has already been placed, so cancelling it
-            $this->cancelOrder($order, $quote, $cancelledMessage);
-            $this->magentoCheckoutSession->restoreQuote();
-
-            if (isset($session['chargePermissionId'])) {
-                $this->amazonAdapter->closeChargePermission(
-                    $order->getStoreId(),
-                    $session['chargePermissionId'],
-                    'Canceled due to checkout session failed to complete',
-                    true
-                );
-            }
 
             if (!$cancelledMessage) {
                 $cancelledMessage = 'Something went wrong. Choose another payment method for checkout and try again.';
@@ -1389,20 +1424,10 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
             );
             return ['success'=>true];
         } catch (\Exception $e) {
-            $this->closeChargePermission($amazonSessionId, $order, $e);
-
-            $session = $this->amazonAdapter->getCheckoutSession(
-                $order->getStoreId(),
-                $amazonSessionId
-            );
-
-            $cancelledMessage = $this->getCanceledMessage($session);
-            $this->cancelOrder($order, $quote, $cancelledMessage);
-            $this->magentoCheckoutSession->restoreQuote();
-
             $logEntryDetails = 'amazonSessionId: ' . $amazonSessionId
                 . ' quoteId: ' . $quote->getId()
                 . ' Error: ' . $e->getMessage();
+
             return $this->handleCompleteCheckoutSessionError(
                 self::GENERIC_COMPLETE_CHECKOUT_ERROR_MESSAGE,
                 $logEntryDetails
@@ -1410,20 +1435,9 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
         }
     }
 
-    /**
-     * Cleanup after an error
-     *
-     * @param string $amazonSessionId
-     * @param OrderInterface $order
-     * @param \Exception $e
-     * @return void
-     */
-    private function closeChargePermission($amazonSessionId, OrderInterface $order, \Exception $e)
+    public function closeChargePermission($amazonSessionId, OrderInterface $order, \Exception $e): void
     {
-        $session = $this->amazonAdapter->getCheckoutSession(
-            $order->getStoreId(),
-            $amazonSessionId
-        );
+        $session = $this->getAmazonSession($amazonSessionId);
 
         if (isset($session['chargePermissionId'])) {
             $this->amazonAdapter->closeChargePermission(
@@ -1431,6 +1445,20 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
                 $session['chargePermissionId'],
                 'Canceled due to technical issue: ' . $e->getMessage(),
                 true
+            );
+        }
+    }
+
+    public function refundCharge(string $amazonSessionId, OrderInterface $order): void
+    {
+        $session = $this->getAmazonSession($amazonSessionId);
+
+        if (isset($session['chargeId'])) {
+            $this->amazonAdapter->createRefund(
+                $order->getStoreId(),
+                $session['chargeId'],
+                $order->getGrandTotal(),
+                $order->getOrderCurrencyCode()
             );
         }
     }
