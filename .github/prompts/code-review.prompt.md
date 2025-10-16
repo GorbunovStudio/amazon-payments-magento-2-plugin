@@ -19,9 +19,8 @@ Provide a comprehensive code review focused on correctness, maintainability, and
 
 1. Business Logic Issues
 2. Architecture Issues
-3. Reference Alignment
-4. Implementation Issues
-5. Naming Suggestions
+3. Implementation Issues
+4. Naming Suggestions
 
 **General Rules**
 
@@ -63,7 +62,6 @@ Provide a comprehensive code review focused on correctness, maintainability, and
    - Any questionable design choices (e.g., God classes, excessive coupling, lack of separation of concerns, etc.)
    - Focus strictly on architecture-level concerns. Do not include the following issues here:
      * business rules, 
-     * reference alignment,
      * low-level implementation details,
      * performance inside a single class,
      * naming,
@@ -81,16 +79,6 @@ Provide a comprehensive code review focused on correctness, maintainability, and
       * **Incorrect Dependency Directions:**  
          - `Vendor_Module` depends on `HigherLevelVendor_HigherLevelModule` (reason)
 </module_dependency_template>
-
-## Reference Alignment
-
-* Compare against these reference implementations and list deviations only:
-   - [Model interface](../../Api/Data/FeraProductInterface.php)
-   - [Model](../../Model/FeraProduct.php)
-   - [Queue Message Handler with database mutation](../../Model/Queue/ExportProduct/Handler.php)
-   - [Collection with PHPDoc](../../Model/ResourceModel/FeraProduct/Collection.php)
-* Compare only similar classes (e.g., repositories with repositories, models with models, etc.). If there are no similar reference implementations, skip this section.
-* Use markdown and <reference_alignment_issue_template>.
 
 <reference_alignment_issue_template>
    1. **File:** `Model/Queue/UpdateProduct/Handler.php`  
@@ -151,7 +139,7 @@ Provide a comprehensive code review focused on correctness, maintainability, and
          );
          ```
 * For each finding, provide a short snippet and a precise fix. Use markdown and <code_snippet_template>. If multiple files are affected, enumerate each file separately. If one file contains multiple issues, list them separately. Use a separate snippet for each issue instance.
-* Don't repeat issues listed in "Business Logic Issues", "Architecture Issues" or "Reference Alignment" sections.
+* Don't repeat issues listed in "Business Logic Issues", "Architecture Issues" sections.
 * Order issues by similarity or relations.
       
 <code_snippet_template>
