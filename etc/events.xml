@@ -22,6 +22,9 @@
     <event name="sales_order_payment_capture">
         <observer name="amazon_payment_order_payment_capture" instance="Amazon\Pay\Observer\OrderPaymentCapture" />
     </event>
+    <event name="sales_order_place_before">
+        <observer name="amazon_pay_order_place_before" instance="Amazon\Pay\Observer\HoldPlacedOrderObserver" />
+    </event>
     <event name="amazon_pay_async_payment_declined">
         <observer name="amazon_pay_async_payment_declined" instance="Amazon\Pay\Observer\OrderPaymentDeclined" />
     </event>

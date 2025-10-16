@@ -531,6 +531,6 @@
     </type>
 
     <type name="Magento\Quote\Api\CartManagementInterface">
-        <plugin name="CompleteCheckoutSession" type="Amazon\Pay\Plugin\CompleteCheckoutSession"/>
+        <plugin name="amazon_pay_order_post_processing" type="Amazon\Pay\Plugin\OrderPostProcessing"/>
     </type>
 </config>
