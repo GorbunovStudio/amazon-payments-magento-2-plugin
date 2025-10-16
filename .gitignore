@@ -4,3 +4,5 @@ auth.json
 docs/_build/
 .idea/
 composer.lock
+
+changes.diff

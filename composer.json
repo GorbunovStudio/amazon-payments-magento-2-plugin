@@ -15,7 +15,15 @@
     "amzn/amazon-payments-magento-2-plugin": "*"
   },
   "require-dev": {
-    "guzzlehttp/guzzle": "^6.2.0"
+    "guzzlehttp/guzzle": "^7.9",
+    "bitexpert/phpstan-magento": "^0.32",
+    "dealerdirect/phpcodesniffer-composer-installer": "^1.1",
+    "friendsofphp/php-cs-fixer": "^3.88",
+    "magento/magento-coding-standard": "^38.0",
+    "phpmd/phpmd": "^2.15",
+    "phpstan/extension-installer": "^1.4",
+    "phpstan/phpstan": "^1.12",
+    "sebastian/phpcpd": "^6.0"
   },
   "require": {
     "php": "~7.1.0||~7.2.0||~7.3.0||~7.4.0||~8.0.0||~8.1.0||~8.2.0||~8.3.0||~8.4.0",
@@ -47,7 +55,12 @@
     }
   ],
   "config": {
-    "bin-dir": "bin"
+    "bin-dir": "bin",
+    "allow-plugins": {
+      "magento/composer-dependency-version-audit-plugin": true,
+      "dealerdirect/phpcodesniffer-composer-installer": true,
+      "phpstan/extension-installer": true
+    }
   },
   "autoload": {
     "files": [
