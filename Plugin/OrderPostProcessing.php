@@ -12,17 +12,13 @@ use Magento\Quote\Api\CartManagementInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Api\Data\PaymentInterface;
 use Magento\Sales\Api\Data\TransactionInterface;
-use Magento\Sales\Api\OrderRepositoryInterface;
-use Magento\Sales\Model\Order\CreditmemoFactory;
 
 class OrderPostProcessing
 {
     public function __construct(
         private CheckoutSessionManagementInterface $checkoutSessionManagement,
         private CartRepositoryInterface $quoteRepository,
-        private OrderRepositoryInterface $orderRepository,
-        private PlacedOrderHolder $placedOrderHolder,
-        private CreditmemoFactory $creditmemoFactory
+        private PlacedOrderHolder $placedOrderHolder
     ) {
     }
 
