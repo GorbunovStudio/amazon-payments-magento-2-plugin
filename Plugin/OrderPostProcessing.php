@@ -48,7 +48,7 @@ class OrderPostProcessing
 
             if (!isset($completeResult['success']) || $completeResult['success'] !== true) {
                 throw new \RuntimeException(
-                    'Unable to complete Amazon Pay checkout session: ' . $completeResult['message'] ?? 'Unknown error'
+                    'Unable to complete Amazon Pay checkout session: ' . ($completeResult['message'] ?? 'Unknown error')
                 );
             }
 
@@ -56,10 +56,8 @@ class OrderPostProcessing
         } catch (\Throwable $e) {
             $quote = $this->quoteRepository->get((int) $cartId);
 
-            $quotePayment = $quote->getPayment();
-
             // Abort if the payment method is not relevant.
-            if ($quotePayment->getMethod() !== Config::CODE) {
+            if (!$payment || $payment->getMethod() !== Config::CODE) {
                 throw $e;
             }
 

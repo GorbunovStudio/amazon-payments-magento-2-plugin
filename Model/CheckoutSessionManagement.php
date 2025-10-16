@@ -377,11 +377,12 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
      * Get Amazon checkout session info from cache or API call
      *
      * @param mixed $amazonSessionId
+     * @param bool $forceReload
      * @return mixed
      */
-    protected function getAmazonSession($amazonSessionId)
+    protected function getAmazonSession($amazonSessionId, $forceReload = false)
     {
-        if (!isset($this->amazonSessions[$amazonSessionId])) {
+        if (!isset($this->amazonSessions[$amazonSessionId]) || $forceReload) {
             $this->amazonSessions[$amazonSessionId] = $this->amazonAdapter->getCheckoutSession(
                 $this->storeManager->getStore()->getId(),
                 $amazonSessionId
@@ -802,7 +803,7 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
         $result['order_id'] = $orderId;
         $result['increment_id'] = $order->getIncrementId();
 
-        $amazonCheckoutResult = $this->completeAmazonCheckoutSession($amazonSessionId, $order, $quote, $isBuyNowFlow);
+        $amazonCheckoutResult = $this->completeAmazonCheckoutSession($amazonSessionId, $order, $isBuyNowFlow);
         if (!$amazonCheckoutResult['success']) {
             return $amazonCheckoutResult;
         }
@@ -823,7 +824,7 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
         CartInterface $quote, 
         \Exception $exception
     ): void {
-        $session = $this->getAmazonSession($amazonSessionId);
+        $session = $this->getAmazonSession($amazonSessionId, true);
 
         $this->closeChargePermission($amazonSessionId, $order, $exception);
 
@@ -911,10 +912,7 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
         }
 
         // check the Amazon session one last time before placing the order
-        $amazonSession = $this->amazonAdapter->getCheckoutSession(
-            $quote->getStoreId(),
-            $amazonSessionId
-        );
+        $amazonSession = $this->getAmazonSession($amazonSessionId, true);
 
         if ($amazonSession['statusDetails']['state'] == 'Canceled') {
             return [
@@ -1289,14 +1287,13 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
      *
      * @param string $amazonSessionId
      * @param OrderInterface $order
-     * @param CartInterface $quote
      * @param bool $isBuyNowFlow
      * @return array
      */
-    private function completeAmazonCheckoutSession($amazonSessionId, $order, $quote, $isBuyNowFlow = false)
+    private function completeAmazonCheckoutSession($amazonSessionId, $order, $isBuyNowFlow = false)
     {
         if ($isBuyNowFlow) {
-            $amazonCheckoutSession = $this->amazonAdapter->getCheckoutSession($order->getStoreId(), $amazonSessionId);
+            $amazonCheckoutSession = $this->getAmazonSession($amazonSessionId, true);
 
             $amazonCompleteCheckoutResult = $this->amazonAdapter->finalizeCheckoutSession(
                 $order->getStoreId(),
@@ -1318,7 +1315,7 @@ class CheckoutSessionManagement implements \Amazon\Pay\Api\CheckoutSessionManage
         $completeCheckoutStatus = $amazonCompleteCheckoutResult['status'] ?? '404';
 
         if (!preg_match('/^2\d\d$/', $completeCheckoutStatus)) {
-            $session = $this->getAmazonSession($amazonSessionId);
+            $session = $this->getAmazonSession($amazonSessionId, true);
 
             $cancelledMessage = $this->getCanceledMessage($session);
 

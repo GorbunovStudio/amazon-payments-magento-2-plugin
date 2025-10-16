@@ -15,6 +15,9 @@
  */
 namespace Amazon\Pay\Api;
 
+use Magento\Quote\Api\Data\CartInterface;
+use Magento\Sales\Api\Data\OrderInterface;
+
 /**
  * @api
  */
@@ -118,7 +121,7 @@ interface CheckoutSessionManagementInterface
      * Close charge permission when was opened
      *
      * @param string $amazonSessionId
-     * @param OrderInterface $order
+     * @param \Magento\Sales\Api\Data\OrderInterface $order
      * @param \Exception $e
      * @return void
      */
@@ -128,7 +131,7 @@ interface CheckoutSessionManagementInterface
      * Refund charge when was paid
      *
      * @param string $amazonSessionId
-     * @param OrderInterface $order
+     * @param \Magento\Sales\Api\Data\OrderInterface $order
      * @return void
      */
     public function refundCharge(string $amazonSessionId, OrderInterface $order): void;
