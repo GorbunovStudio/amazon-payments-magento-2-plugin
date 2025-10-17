@@ -17,10 +17,12 @@
 namespace Amazon\Pay\Gateway\Response;
 
 use Amazon\Pay\Gateway\Helper\SubjectReader;
+use Amazon\Pay\Model\Adapter\AmazonPayAdapter;
 use Amazon\Pay\Model\AsyncManagement;
 use Amazon\Pay\Model\Config\Source\AuthorizationMode;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Payment\Gateway\Response\HandlerInterface;
+use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Payment;
 
 class AuthorizationSaleHandler implements HandlerInterface
@@ -41,19 +43,27 @@ class AuthorizationSaleHandler implements HandlerInterface
     private $scopeConfig;
 
     /**
+     * @var AmazonPayAdapter
+     */
+    private $amazonAdapter;
+
+    /**
      * AuthorizationHandler constructor.
      * @param SubjectReader $subjectReader
      * @param AsyncManagement $asyncManagement
      * @param ScopeConfigInterface $scopeConfig
+     * @param AmazonPayAdapter $amazonAdapter
      */
     public function __construct(
         SubjectReader $subjectReader,
         AsyncManagement $asyncManagement,
-        ScopeConfigInterface $scopeConfig
+        ScopeConfigInterface $scopeConfig,
+        AmazonPayAdapter $amazonAdapter
     ) {
         $this->subjectReader = $subjectReader;
         $this->asyncManagement = $asyncManagement;
         $this->scopeConfig = $scopeConfig;
+        $this->amazonAdapter = $amazonAdapter;
     }
 
     /**
@@ -70,6 +80,8 @@ class AuthorizationSaleHandler implements HandlerInterface
         if ($paymentDO->getPayment() instanceof Payment) {
             /** @var Payment $payment */
             $payment = $paymentDO->getPayment();
+            /** @var Order $order */
+            $order = $payment->getOrder();
 
             $transactionId = $response['chargeId'] ?? $response['checkoutSessionId'];
             $payment->setTransactionId($transactionId);
@@ -87,6 +99,51 @@ class AuthorizationSaleHandler implements HandlerInterface
                     $payment->setIsTransactionPending(true);
                     $payment->setIsTransactionClosed(false);
                     $this->asyncManagement->queuePendingAuthorization($response['chargeId']);
+                    break;
+                case 'Open':
+                    $amazonCompleteCheckoutResult = $this->amazonAdapter->finalizeCheckoutSession(
+                        $order->getStoreId(),
+                        $response['checkoutSessionId'],
+                        $order->getGrandTotal(),
+                        $order->getOrderCurrencyCode(),
+                        $response['shippingAddress'] ?? null,
+                        $response['billingAddress'] ?? null
+                    );
+
+                    if ($amazonCompleteCheckoutResult['status'] !== 200) {
+                        throw new \RuntimeException('Unable to finalize Amazon Pay checkout session. ' . ($amazonCompleteCheckoutResult['message'] ?? ''));
+                    }
+
+                    $chargePermissionsId = $amazonCompleteCheckoutResult['chargePermissionId'] ?? null;
+
+                    if (!$chargePermissionsId) {
+                        throw new \RuntimeException('Missed charge permission ID in finalize Amazon Pay checkout session response.');
+                    }
+
+                    $chargeId = $amazonCompleteCheckoutResult['chargeId'] ?? null;
+
+                    if (!$chargeId) {
+                        throw new \RuntimeException('Missed charge ID in finalize Amazon Pay checkout session response.');
+                    }
+
+                    if ($amazonCompleteCheckoutResult['statusDetails']['state'] !== 'Completed') {
+                       $this->amazonAdapter->captureCharge(
+                            $order->getStoreId(),
+                            $chargeId,
+                            $order->getGrandTotal(),
+                            $order->getOrderCurrencyCode()
+                        );
+                    }
+
+                    $amazonCharge = $this->amazonAdapter->getCharge($order->getStoreId(), $chargeId);
+                    
+                    if ($amazonCharge['statusDetails']['state'] !== 'Captured') {
+                        throw new \RuntimeException('Unable to capture Amazon Pay charge.');
+                    }
+
+                    $payment->setIsTransactionClosed(true)
+                        ->setTransactionAdditionalInfo('charge_permission_id', $chargePermissionsId);
+
                     break;
                 default:
                     break;
