@@ -141,7 +141,13 @@ class AuthorizationSaleHandler implements HandlerInterface
                         throw new \RuntimeException('Unable to capture Amazon Pay charge.');
                     }
 
-                    $payment->setIsTransactionClosed(true)
+                    if ($invoice = $payment->getCreatedInvoice()) {
+                        $invoice->setTransactionId($chargeId);
+                    }
+
+                    $payment->setTransactionId($chargeId)
+                        ->setLastTransId($chargeId)
+                        ->setIsTransactionClosed(true)
                         ->setTransactionAdditionalInfo('charge_permission_id', $chargePermissionsId);
 
                     break;
