@@ -1,0 +1,26 @@
+parameters:
+	level: 9
+	paths:
+		- Api
+		- Block
+		- Client
+		- Command
+		- Controller
+		- Cron
+		- CustomerData
+		- Domain
+		- Gateway
+		- Helper
+		- Logger
+		- Model
+		- Observer
+		- Plugin
+		- Setup
+		- view
+		- registration.php
+	excludePaths:
+		analyse:
+			- vendor/*
+			- generated/*
+	typeAliases:
+		UnstructuredArray: array

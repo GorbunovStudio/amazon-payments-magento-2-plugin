@@ -1,0 +1,71 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Create diff",
+            "type": "shell",
+            "problemMatcher": [],
+            "command": "./bin/createDiff.sh",
+            "args": [
+                "--target-branch",
+                "${input:diffTarget}"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Create diff (staged)",
+            "type": "shell",
+            "problemMatcher": [],
+            "command": "./bin/createDiff.sh",
+            "args": [
+                "--target-branch",
+                "${input:diffTarget}",
+                "--staged"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Composer: install",
+            "type": "shell",
+            "problemMatcher": [],
+            "command": "composer",
+            "args": [
+                "install"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "XDEBUG_MODE": "off"
+                }
+            }
+        },
+        {
+            "label": "Composer: update hash",
+            "type": "shell",
+            "problemMatcher": [],
+            "command": "composer",
+            "args": [
+                "update",
+                "--lock"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "XDEBUG_MODE": "off"
+                }
+            }
+        },
+    ],
+    "inputs": [
+        {
+            "id": "diffTarget",
+            "type": "promptString",
+            "description": "Enter diff target",
+            "default": "budsies"
+        },
+    ]
+}
