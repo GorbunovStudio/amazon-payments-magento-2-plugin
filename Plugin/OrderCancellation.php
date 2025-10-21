@@ -9,6 +9,7 @@ use Amazon\Pay\Gateway\Config\Config;
 use Amazon\Pay\Model\Adapter\AmazonPayAdapter;
 use Amazon\Pay\Service\PlacedOrderHolder;
 use Closure;
+use Magento\Framework\Lock\LockManagerInterface;
 use Magento\Quote\Api\CartManagementInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Api\Data\PaymentInterface;
@@ -20,6 +21,8 @@ use Magento\Sales\Model\Order\RefundAdapterInterface;
 
 class OrderCancellation
 {
+    private const ORDER_UPDATE_LOCK_PREFIX = 'order_update_';
+
     public function __construct(
         private CheckoutSessionManagementInterface $checkoutSessionManagement,
         private CartRepositoryInterface $quoteRepository,
@@ -29,6 +32,7 @@ class OrderCancellation
         private CreditmemoFactory $creditmemoFactory,
         private CreditmemoRepositoryInterface $creditmemoRepository,
         private RefundAdapterInterface $refundAdapter,
+        private LockManagerInterface $lockManager,
     ) {
     }
 
@@ -83,23 +87,37 @@ class OrderCancellation
 
             // Cancel the order in case when it was saved.
             if ($order->getId()) {
-                if ($order->canCancel()) {
-                    $order->cancel();
-                } elseif ($orderPayment->getMethodInstance()->canRefund()) {
-                    $creditmemo = $this->creditmemoFactory->createByOrder($order);
-                    $invoice = $order->getInvoiceCollection()->getFirstItem();
+                $lockName = self::ORDER_UPDATE_LOCK_PREFIX . $order->getId();
+                
+                if (!$this->lockManager->lock($lockName, 30)) {
+                    throw new \RuntimeException(
+                        $errorMessagePrefix . "Unable to acquire lock for order with ID {$order->getId()}",
+                        $e->getCode(),
+                        $e
+                    );
+                }
 
-                    $creditmemo->setInvoice($invoice);
-                    $creditmemo->setState(Creditmemo::STATE_REFUNDED);
+                try {
+                    if ($order->canCancel()) {
+                        $order->cancel();
+                    } elseif ($orderPayment->getMethodInstance()->canRefund()) {
+                        $creditmemo = $this->creditmemoFactory->createByOrder($order);
+                        $invoice = $order->getInvoiceCollection()->getFirstItem();
 
-                    $orderPayment->setCreatedInvoice($invoice)
-                        ->setCreditmemo($creditmemo)
-                        ->setParentTransactionId($orderPayment->getCreatedTransaction()->getTxnId());
+                        $creditmemo->setInvoice($invoice);
+                        $creditmemo->setState(Creditmemo::STATE_REFUNDED);
 
-                    $this->refundAdapter->refund($creditmemo, $order, true);
+                        $orderPayment->setCreatedInvoice($invoice)
+                            ->setCreditmemo($creditmemo)
+                            ->setParentTransactionId($orderPayment->getCreatedTransaction()->getTxnId());
 
-                    $this->creditmemoRepository->save($creditmemo);
-                    $this->orderRepository->save($order);
+                        $this->refundAdapter->refund($creditmemo, $order, true);
+
+                        $this->creditmemoRepository->save($creditmemo);
+                        $this->orderRepository->save($order);
+                    }
+                } finally {
+                    $this->lockManager->unlock($lockName);
                 }
 
                 throw $e;
