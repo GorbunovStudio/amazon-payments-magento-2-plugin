@@ -137,6 +137,18 @@ class AuthorizationSaleHandler implements HandlerInterface
                         );
                     }
 
+                    $updateChargePermissionResult = $this->amazonAdapter->updateChargePermission(
+                        $order->getStoreId(),
+                        $chargePermissionsId,
+                        ['merchantReferenceId' => $order->getIncrementId()]
+                    );
+
+                    if ($updateChargePermissionResult['status'] !== 200) {
+                        throw new \RuntimeException(
+                            "Unable to update Amazon Pay charge permission {$chargePermissionsId}."
+                        );
+                    }
+
                     if ($amazonCompleteCheckoutResult['statusDetails']['state'] !== 'Completed') {
                         $captureChargeResult = $this->amazonAdapter->captureCharge(
                             $order->getStoreId(),
