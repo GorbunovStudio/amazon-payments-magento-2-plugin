@@ -10,6 +10,7 @@ use Amazon\Pay\Model\Adapter\AmazonPayAdapter;
 use Amazon\Pay\Service\PlacedOrderHolder;
 use Closure;
 use Magento\Framework\Lock\LockManagerInterface;
+use Magento\Framework\Validator\Exception as ValidatorException;
 use Magento\Quote\Api\CartManagementInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Api\Data\PaymentInterface;
@@ -22,6 +23,15 @@ use Magento\Sales\Model\Order\RefundAdapterInterface;
 class OrderCancellation
 {
     private const ORDER_UPDATE_LOCK_PREFIX = 'order_update_';
+
+    private const RETHROW_VALIDATION_MESSAGES = [
+        'Processor Declined',
+        'Insufficient Funds',
+        'Processor Declined - Fraud Suspected',
+        'Issuer or Cardholder has put a restriction on the card',
+        'Declined - Call Issuer',
+        'Closed Card',
+    ];
 
     public function __construct(
         private CheckoutSessionManagementInterface $checkoutSessionManagement,
@@ -51,6 +61,11 @@ class OrderCancellation
 
             // Abort if the payment method is not relevant.
             if ($payment->getMethod() !== Config::CODE) {
+                throw $e;
+            }
+
+            // Re-throw validation exceptions with specific decline messages.
+            if ($e instanceof ValidatorException && in_array($e->getMessage(), self::RETHROW_VALIDATION_MESSAGES, true)) {
                 throw $e;
             }
 
