@@ -10,6 +10,7 @@ use Amazon\Pay\Model\Adapter\AmazonPayAdapter;
 use Amazon\Pay\Service\PlacedOrderHolder;
 use Closure;
 use Magento\Framework\Lock\LockManagerInterface;
+use Magento\Framework\Validator\Exception as ValidatorException;
 use Magento\Quote\Api\CartManagementInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Api\Data\PaymentInterface;
@@ -33,8 +34,7 @@ class OrderCancellation
         private CreditmemoRepositoryInterface $creditmemoRepository,
         private RefundAdapterInterface $refundAdapter,
         private LockManagerInterface $lockManager,
-    ) {
-    }
+    ) {}
 
     public function aroundPlaceOrder(
         CartManagementInterface $subject,
@@ -51,6 +51,10 @@ class OrderCancellation
 
             // Abort if the payment method is not relevant.
             if ($payment->getMethod() !== Config::CODE) {
+                throw $e;
+            }
+
+            if ($e instanceof ValidatorException) {
                 throw $e;
             }
 
@@ -88,7 +92,7 @@ class OrderCancellation
             // Cancel the order in case when it was saved.
             if ($order->getId()) {
                 $lockName = self::ORDER_UPDATE_LOCK_PREFIX . $order->getId();
-                
+
                 if (!$this->lockManager->lock($lockName, 30)) {
                     throw new \RuntimeException(
                         $errorMessagePrefix . "Unable to acquire lock for order with ID {$order->getId()}",
@@ -154,7 +158,7 @@ class OrderCancellation
                     );
 
                     if ($refundResponse['status'] !== 201) {
-                        $errorMessage = "Unable to refund Amazon Pay charge {$chargeId}. " 
+                        $errorMessage = "Unable to refund Amazon Pay charge {$chargeId}. "
                             . ($refundResponse['statusDetails']['reasonDescription'] ?? '');
                         break;
                     }
@@ -177,7 +181,7 @@ class OrderCancellation
                     );
 
                     if ($cancelResponse['status'] !== 200) {
-                        $errorMessage = "Unable to close Amazon Pay charge permission {$chargePermissionId}. " 
+                        $errorMessage = "Unable to close Amazon Pay charge permission {$chargePermissionId}. "
                             . ($cancelResponse['statusDetails']['reasonDescription'] ?? '');
                         break;
                     }
