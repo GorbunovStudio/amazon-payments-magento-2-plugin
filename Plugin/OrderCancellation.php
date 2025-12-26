@@ -24,15 +24,6 @@ class OrderCancellation
 {
     private const ORDER_UPDATE_LOCK_PREFIX = 'order_update_';
 
-    private const RETHROW_VALIDATION_MESSAGES = [
-        'Processor Declined',
-        'Insufficient Funds',
-        'Processor Declined - Fraud Suspected',
-        'Issuer or Cardholder has put a restriction on the card',
-        'Declined - Call Issuer',
-        'Closed Card',
-    ];
-
     public function __construct(
         private CheckoutSessionManagementInterface $checkoutSessionManagement,
         private CartRepositoryInterface $quoteRepository,
@@ -65,7 +56,7 @@ class OrderCancellation
             }
 
             // Re-throw validation exceptions with specific decline messages.
-            if ($e instanceof ValidatorException && in_array($e->getMessage(), self::RETHROW_VALIDATION_MESSAGES, true)) {
+            if ($e instanceof ValidatorException) {
                 throw $e;
             }
 
