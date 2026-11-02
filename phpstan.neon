@@ -1,5 +1,8 @@
 parameters:
 	level: 9
+	phpVersion:
+		min: 80300
+		max: 80500
 	paths:
 		- Api
 		- Block
@@ -15,6 +18,7 @@ parameters:
 		- Model
 		- Observer
 		- Plugin
+		- Service
 		- Setup
 		- view
 		- registration.php
