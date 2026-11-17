@@ -1,5 +1,5 @@
 {
-    "intelephense.environment.phpVersion": "8.2",
+    "intelephense.environment.phpVersion": "8.5",
     "search.useIgnoreFiles": false,
     "search.exclude": {
         "generated": true,

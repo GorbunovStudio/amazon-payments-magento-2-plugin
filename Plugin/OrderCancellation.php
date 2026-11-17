@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Amazon\Pay\Plugin;
 
-use Amazon\Pay\Api\CheckoutSessionManagementInterface;
 use Amazon\Pay\Gateway\Config\Config;
 use Amazon\Pay\Model\Adapter\AmazonPayAdapter;
 use Amazon\Pay\Service\PlacedOrderHolder;
@@ -25,7 +24,6 @@ class OrderCancellation
     private const ORDER_UPDATE_LOCK_PREFIX = 'order_update_';
 
     public function __construct(
-        private CheckoutSessionManagementInterface $checkoutSessionManagement,
         private CartRepositoryInterface $quoteRepository,
         private PlacedOrderHolder $placedOrderHolder,
         private OrderRepositoryInterface $orderRepository,
@@ -40,10 +38,10 @@ class OrderCancellation
         CartManagementInterface $subject,
         Closure $proceed,
         int $cartId,
-        PaymentInterface $payment = null
+        ?PaymentInterface $payment = null
     ): int {
         try {
-            return $proceed($cartId, $payment);
+            return (int)$proceed($cartId, $payment);
         } catch (\Throwable $e) {
             $quote = $this->quoteRepository->get((int) $cartId);
 
